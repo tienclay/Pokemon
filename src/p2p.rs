@@ -22,7 +22,11 @@ pub struct ChainResponse {
     pub blocks: HashMap<String,Block>,
     pub receiver: String,
 }
-
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetPokemon{
+    pub name: String,
+    pub object: Block,
+}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LocalChainRequest {
     pub from_peer_id: String,
@@ -90,10 +94,17 @@ impl NetworkBehaviourEventProcess<FloodsubEvent> for AppBehaviour {
                     }
                 }
             } else if let Ok(block) = serde_json::from_slice::<HashMap<String,Block>>(&msg.data) {
-                info!("received new block from {}", msg.source.to_string());
+                info!("received block from {}", msg.source.to_string());
+                
                 for (key,value) in block{
+                    info!("Key: {}, Value: {:?}", key, value);
                     self.app.try_add_block(key,value);
                 }
+            }
+            else if let Ok(block) = serde_json::from_slice::<GetPokemon>(&msg.data) {
+                info!("Get Transaction from {}", msg.source.to_string());
+                info!("Name: {}, Pokemon: {:?}", block.name, block.object);
+                
             }
         }
     }
@@ -140,6 +151,40 @@ pub fn handle_print_chain(swarm: &Swarm<AppBehaviour>) {
     info!("{}", pretty_json);
 }
 
+pub fn handle_print_pokemon(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
+    // Kiểm tra xem chuỗi đầu vào có là UTF-8 hợp lệ không
+    if let Ok(cmd) = std::str::from_utf8(cmd.as_bytes()) {
+        // Tách chuỗi thành các phần riêng biệt
+        let mut parts = cmd.split_whitespace();
+
+        let _ = parts.next(); // Bỏ qua "ls"
+        let _ = parts.next(); // Bỏ qua "pokemon"
+
+        if let Some(name) = parts.next() {
+            let behaviour = swarm.behaviour_mut();
+            if let Some(pokemon) = behaviour.app.blocks.get(name){
+                let get_pokemon = GetPokemon{name:name.to_string(), object:pokemon.clone()};
+                let json = serde_json::to_string(&get_pokemon).expect("can't jsonify request");
+
+                
+                behaviour
+                    .floodsub
+                    .publish(BLOCK_TOPIC.clone(), json.as_bytes());
+
+                info!("Get pokemon with name '{}':{:?}", name,pokemon);
+            }
+            else{
+                info!("Not found Pokemon with name '{}'",name);
+            }
+            
+        } else {
+            info!("Invalid command format for get pokemon");
+        }
+    } else {
+        info!("Invalid UTF-8 input");
+    }
+}
+
 pub fn handle_create_block(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
     // Kiểm tra xem chuỗi đầu vào có là UTF-8 hợp lệ không
     if let Ok(cmd) = std::str::from_utf8(cmd.as_bytes()) {
@@ -169,9 +214,9 @@ pub fn handle_create_block(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
 
             // Chèn khối mới vào bản đồ
             behaviour.app.blocks.insert(name.to_owned(), block.clone());
-
+            
             let mut new_pokemon = HashMap::new();
-            new_pokemon.insert(name.to_owned(), block);
+            new_pokemon.insert(name.to_owned(), block.clone());
 
             let json = serde_json::to_string(&new_pokemon).expect("can't jsonify request");
 
@@ -180,7 +225,7 @@ pub fn handle_create_block(cmd: &str, swarm: &mut Swarm<AppBehaviour>) {
                 .floodsub
                 .publish(BLOCK_TOPIC.clone(), json.as_bytes());
 
-            info!("Broadcasted new block with name '{}'", name);
+            info!("Broadcasted block with name '{}':{:?}", name,block);
         } else {
             info!("Invalid command format for creating block");
         }

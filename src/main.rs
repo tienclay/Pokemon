@@ -19,7 +19,6 @@ use tokio::{
     time::sleep,
 };
 use std::collections::HashMap;
-const DIFFICULTY_PREFIX: &str = "00";
 
 mod p2p;
 
@@ -63,9 +62,11 @@ impl App {
         if let Some(existing_block) = self.blocks.get_mut(&name) {
             // Nếu name đã tồn tại, cập nhật giá trị của block tương ứng
             *existing_block = block;
+            info!("Updated block!")
         } else {
             // Nếu name chưa tồn tại, thêm một cặp key-value mới vào HashMap
             self.blocks.insert(name, block);
+            info!("Add new block!")
         }
     }
     fn choose_chain(&mut self, local: HashMap<String,Block>, remote: HashMap<String,Block>) -> HashMap<String,Block> {
@@ -131,7 +132,7 @@ async fn main() {
                     Some(p2p::EventType::Init)
                 }
                 event = swarm.select_next_some() => {
-                    info!("Unhandled Swarm Event: {:?}", event);
+                    //info!("Unhandled Swarm Event: {:?}", event);
                     None
                 },
             }
@@ -170,6 +171,7 @@ async fn main() {
                 p2p::EventType::Input(line) => match line.as_str() {
                     "ls p" => p2p::handle_print_peers(&swarm),
                     cmd if cmd.starts_with("ls c") => p2p::handle_print_chain(&swarm),
+                    cmd if cmd.starts_with("ls pokemon") => p2p::handle_print_pokemon(cmd, &mut swarm),
                     cmd if cmd.starts_with("create b") => p2p::handle_create_block(cmd, &mut swarm),
                     _ => error!("unknown command"),
                 },
